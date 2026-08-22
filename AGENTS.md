@@ -53,7 +53,9 @@ No codegen, no migrations, no lockfile beyond `go.sum`.
   a mid-run interruption loses progress only for the folder in flight.
 - A folder that errors is logged; the run continues (one bad mailbox doesn't
   abort the sync).
-- `--dry-run`: per-folder "new" count reports what would be delivered; nothing
+- `--dry-run`: once per run, dials/logs in to the destination and closes
+  immediately (`testDestConnection`) to verify dest reachability/credentials,
+  then per-folder reports the "new" count that would be delivered; nothing
   is written, state is never saved.
 - Re-running without deleting the state file is safe and fast — messages are
   header-fetched first, then skipped via dedup key before any full fetch/append.

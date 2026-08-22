@@ -58,6 +58,14 @@ func main() {
 	}
 	log.Printf("found %d folder(s) on source", len(folders))
 
+	if cfg.DryRun {
+		log.Printf("dry-run: testing connection to destination...")
+		if err := testDestConnection(cfg); err != nil {
+			log.Fatalf("dest: %v", err)
+		}
+		log.Printf("dry-run: destination connection OK")
+	}
+
 	var totalNew, totalSkipped int
 
 	for _, folder := range folders {
@@ -78,6 +86,17 @@ func main() {
 	}
 
 	log.Printf("done — %d synchronised, %d skipped (already synced)", totalNew, totalSkipped)
+}
+
+// testDestConnection dials and authenticates to the destination server, then
+// immediately closes the connection. Used in dry-run mode to verify dest
+// credentials/connectivity without performing any folder sync work.
+func testDestConnection(cfg *Config) error {
+	dest, err := dialDestFn(cfg.DestHost, cfg.DestUser, cfg.DestPass, cfg.DestSkipTLS)
+	if err != nil {
+		return err
+	}
+	return dest.Close()
 }
 
 func syncFolder(cfg *Config, src *SourceClient, state State, folder string) (newCount, skippedCount int, err error) {

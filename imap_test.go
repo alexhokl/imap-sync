@@ -369,6 +369,43 @@ func TestSyncFolder_DryRun(t *testing.T) {
 	assert.Empty(t, metas, "dry-run must not deliver any messages")
 }
 
+func TestTestDestConnection_Success(t *testing.T) {
+	dstAddr, _ := newTestServer(t)
+	cfg := newSyncConfig(dstAddr)
+
+	orig := dialDestFn
+	dialDestFn = func(host, user, pass string, skipTLS bool) (*DestClient, error) {
+		c, err := imapclient.DialInsecure(host, nil)
+		if err != nil {
+			return nil, err
+		}
+		if err := c.Login(user, pass).Wait(); err != nil {
+			_ = c.Close()
+			return nil, err
+		}
+		return newDestClient(c), nil
+	}
+	t.Cleanup(func() { dialDestFn = orig })
+
+	require.NoError(t, testDestConnection(cfg))
+}
+
+func TestTestDestConnection_Failure(t *testing.T) {
+	cfg := newSyncConfig("127.0.0.1:1") // nothing listening
+
+	orig := dialDestFn
+	dialDestFn = func(host, user, pass string, skipTLS bool) (*DestClient, error) {
+		c, err := imapclient.DialInsecure(host, nil)
+		if err != nil {
+			return nil, err
+		}
+		return newDestClient(c), nil
+	}
+	t.Cleanup(func() { dialDestFn = orig })
+
+	require.Error(t, testDestConnection(cfg))
+}
+
 func TestSyncFolder_EmptyMailbox(t *testing.T) {
 	srcAddr, _ := newTestServer(t)
 	dstAddr, _ := newTestServer(t)
