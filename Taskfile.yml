@@ -1,0 +1,69 @@
+version: "3"
+
+env:
+  APP_NAME: imap-sync
+
+tasks:
+  build:
+    desc: Build
+    cmds:
+      - go build -o /dev/null ./...
+
+  install:
+    desc: Install
+    cmd: go install
+
+  test:
+    desc: Run tests and write coverage.out
+    cmds:
+      - go test ./... -coverprofile=coverage.out -covermode=atomic
+
+  coverage:
+    desc: Run tests and print per-function coverage table
+    cmds:
+      - task: test
+      - go tool cover -func=coverage.out
+
+  coverage-html:
+    desc: Run tests and open HTML coverage report in browser
+    cmds:
+      - task: test
+      - go tool cover -html=coverage.out
+
+  open-coverage-html:
+    desc: Test with coverage in HTML and open the HTML
+    cmds:
+      - task: coverage-html
+      - open coverage.html
+
+  clean:
+    desc: Remove build artefacts
+    cmds:
+      - rm -f coverage.out imap-sync
+
+  bench:
+    desc: Run benchmarks on CPU and memory
+    cmd: go test -bench=. -benchmem ./...
+
+  lint:
+    desc: Lint
+    cmds:
+      - golangci-lint run
+
+  sec:
+    desc: Security check
+    # Generated protobuf code is excluded: it is not hand maintained, so its
+    # findings are not actionable here.
+    cmd: gosec -exclude-generated ./...
+
+  tag:
+    desc: Create a new git tag with incremented patch version (0.1.x)
+    silent: true
+    cmds:
+      - |
+        LATEST=$(git tag --sort=-version:refname | grep -E '^0\.1\.[0-9]+$' | head -1)
+        PATCH=$(echo "$LATEST" | cut -d. -f3)
+        if [ -z "$PATCH" ]; then PATCH=-1; fi
+        NEW_TAG="0.1.$((PATCH + 1))"
+        git tag "$NEW_TAG"
+        echo "Created tag $NEW_TAG"
