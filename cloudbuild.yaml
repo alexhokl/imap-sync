@@ -1,0 +1,25 @@
+logsBucket: "gs://craffy-build-logs"
+
+options:
+  machineType: E2_HIGHCPU_8 # 8 vCPU
+  logging: GCS_ONLY
+
+timeout: "1200s" # 20 minutes
+
+steps:
+  - name: "gcr.io/cloud-builders/docker"
+    id: Build
+    waitFor: ["-"]
+    args:
+      - "build"
+      - "-t"
+      - "asia-east1-docker.pkg.dev/$PROJECT_ID/public/imap-sync:$TAG_NAME"
+      - "."
+
+  - name: "gcr.io/cloud-builders/docker"
+    id: Push to Container registry
+    waitFor: [Build]
+    args:
+      - "push"
+      - "asia-east1-docker.pkg.dev/$PROJECT_ID/public/imap-sync:$TAG_NAME"
+
