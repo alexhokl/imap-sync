@@ -11,7 +11,8 @@ import (
 
 // SourceClient wraps an IMAP client connected to the source server.
 type SourceClient struct {
-	c *imapclient.Client
+	c     *imapclient.Client
+	delim rune
 }
 
 // newSourceClient wraps an existing IMAP client as a SourceClient.
@@ -38,7 +39,9 @@ func (s *SourceClient) Close() error {
 	return s.c.Close()
 }
 
-// ListFolders returns all mailbox names on the source server.
+// ListFolders returns all mailbox names on the source server. As a side
+// effect it records the server's hierarchy delimiter (available via
+// Delimiter) from the LIST response, avoiding a separate round-trip.
 func (s *SourceClient) ListFolders() ([]string, error) {
 	items, err := s.c.List("", "*", nil).Collect()
 	if err != nil {
@@ -47,8 +50,18 @@ func (s *SourceClient) ListFolders() ([]string, error) {
 	names := make([]string, 0, len(items))
 	for _, item := range items {
 		names = append(names, item.Mailbox)
+		if s.delim == 0 {
+			s.delim = item.Delim
+		}
 	}
 	return names, nil
+}
+
+// Delimiter returns the source server's mailbox hierarchy delimiter, as
+// observed from the most recent ListFolders call. It is 0 if ListFolders has
+// not been called yet or the server reported no delimiter.
+func (s *SourceClient) Delimiter() rune {
+	return s.delim
 }
 
 // MessageMeta holds the minimal info needed for deduplication.

@@ -67,9 +67,11 @@ func main() {
 	}
 
 	var totalNew, totalSkipped int
+	srcDelim := src.Delimiter()
+	var destDelim rune // fetched once, on the first per-run dest connection
 
 	for _, folder := range folders {
-		newCount, skippedCount, err := syncFolder(cfg, src, state, folder)
+		newCount, skippedCount, err := syncFolder(cfg, src, state, folder, srcDelim, &destDelim)
 		if err != nil {
 			log.Printf("ERROR syncing %q: %v (continuing)", folder, err)
 			continue
@@ -99,7 +101,7 @@ func testDestConnection(cfg *Config) error {
 	return dest.Close()
 }
 
-func syncFolder(cfg *Config, src *SourceClient, state State, folder string) (newCount, skippedCount int, err error) {
+func syncFolder(cfg *Config, src *SourceClient, state State, folder string, srcDelim rune, destDelim *rune) (newCount, skippedCount int, err error) {
 	log.Printf("[%s] fetching headers...", folder)
 
 	metas, err := src.FetchHeaders(folder)
@@ -138,7 +140,17 @@ func syncFolder(cfg *Config, src *SourceClient, state State, folder string) (new
 	}
 	defer func() { _ = dest.Close() }()
 
-	if err := dest.EnsureFolder(folder); err != nil {
+	if *destDelim == 0 {
+		d, err := dest.Delimiter()
+		if err != nil {
+			return 0, skippedCount, fmt.Errorf("get dest delimiter: %w", err)
+		}
+		*destDelim = d
+		log.Printf("dest delimiter: %q", *destDelim)
+	}
+	destFolder := translateMailboxName(folder, srcDelim, *destDelim)
+
+	if err := dest.EnsureFolder(destFolder); err != nil {
 		return 0, skippedCount, fmt.Errorf("ensure folder %q on dest: %w", folder, err)
 	}
 
@@ -149,7 +161,7 @@ func syncFolder(cfg *Config, src *SourceClient, state State, folder string) (new
 			continue
 		}
 
-		if err := dest.Append(folder, msg); err != nil {
+		if err := dest.Append(destFolder, msg); err != nil {
 			log.Printf("[%s] warning: append UID %d: %v — skipping", folder, meta.UID, err)
 			continue
 		}

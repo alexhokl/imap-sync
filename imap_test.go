@@ -193,6 +193,16 @@ func TestDestClient_EnsureFolder_Idempotent(t *testing.T) {
 	require.NoError(t, dest.EnsureFolder("MyFolder"))
 }
 
+func TestDestClient_Delimiter(t *testing.T) {
+	addr, _ := newTestServer(t)
+	dest := newDestClient(dialInsecure(t, addr))
+
+	delim, err := dest.Delimiter()
+	require.NoError(t, err)
+	// imapmemserver always reports '/' as its hierarchy delimiter.
+	assert.Equal(t, '/', delim)
+}
+
 func TestDestClient_Append(t *testing.T) {
 	addr, _ := newTestServer(t)
 	ts := time.Date(2026, 3, 1, 12, 0, 0, 0, time.UTC)
@@ -252,6 +262,9 @@ func newSyncConfig(destAddr string) *Config {
 
 // runSyncFolder is a test-only wrapper that overrides the destination dialer
 // to use InsecureAuth (plain TCP) so it can reach the in-process test server.
+// srcDelim/destDelim mirror the parameters syncFolder now takes for hierarchy
+// delimiter translation; pass 0 for srcDelim and a fresh *rune for destDelim
+// to preserve prior (no-translation) behavior in tests that don't care about it.
 func runSyncFolder(
 	t *testing.T,
 	cfg *Config,
@@ -259,6 +272,8 @@ func runSyncFolder(
 	state State,
 	folder string,
 	destAddr string,
+	srcDelim rune,
+	destDelim *rune,
 ) (newCount, skippedCount int, err error) {
 	t.Helper()
 
@@ -278,7 +293,7 @@ func runSyncFolder(
 	t.Cleanup(func() { dialDestFn = orig })
 
 	cfg.DestHost = destAddr
-	return syncFolder(cfg, src, state, folder)
+	return syncFolder(cfg, src, state, folder, srcDelim, destDelim)
 }
 
 func TestSyncFolder_AllNew(t *testing.T) {
@@ -292,7 +307,7 @@ func TestSyncFolder_AllNew(t *testing.T) {
 	state := make(State)
 	cfg := newSyncConfig(dstAddr)
 
-	newCount, skipped, err := runSyncFolder(t, cfg, src, state, "INBOX", dstAddr)
+	newCount, skipped, err := runSyncFolder(t, cfg, src, state, "INBOX", dstAddr, 0, new(rune))
 	require.NoError(t, err)
 	assert.Equal(t, 2, newCount)
 	assert.Equal(t, 0, skipped)
@@ -314,7 +329,7 @@ func TestSyncFolder_AllSkipped(t *testing.T) {
 	src := newSourceClient(dialInsecure(t, srcAddr))
 	cfg := newSyncConfig(dstAddr)
 
-	newCount, skipped, err := runSyncFolder(t, cfg, src, state, "INBOX", dstAddr)
+	newCount, skipped, err := runSyncFolder(t, cfg, src, state, "INBOX", dstAddr, 0, new(rune))
 	require.NoError(t, err)
 	assert.Equal(t, 0, newCount)
 	assert.Equal(t, 2, skipped)
@@ -335,7 +350,7 @@ func TestSyncFolder_PartialSkip(t *testing.T) {
 	src := newSourceClient(dialInsecure(t, srcAddr))
 	cfg := newSyncConfig(dstAddr)
 
-	newCount, skipped, err := runSyncFolder(t, cfg, src, state, "INBOX", dstAddr)
+	newCount, skipped, err := runSyncFolder(t, cfg, src, state, "INBOX", dstAddr, 0, new(rune))
 	require.NoError(t, err)
 	assert.Equal(t, 2, newCount)
 	assert.Equal(t, 1, skipped)
@@ -353,7 +368,7 @@ func TestSyncFolder_DryRun(t *testing.T) {
 	cfg := newSyncConfig(dstAddr)
 	cfg.DryRun = true
 
-	newCount, skipped, err := runSyncFolder(t, cfg, src, state, "INBOX", dstAddr)
+	newCount, skipped, err := runSyncFolder(t, cfg, src, state, "INBOX", dstAddr, 0, new(rune))
 	require.NoError(t, err)
 	assert.Equal(t, 1, newCount, "dry-run reports 1 new")
 	assert.Equal(t, 0, skipped)
@@ -414,7 +429,7 @@ func TestSyncFolder_EmptyMailbox(t *testing.T) {
 	state := make(State)
 	cfg := newSyncConfig(dstAddr)
 
-	newCount, skipped, err := runSyncFolder(t, cfg, src, state, "INBOX", dstAddr)
+	newCount, skipped, err := runSyncFolder(t, cfg, src, state, "INBOX", dstAddr, 0, new(rune))
 	require.NoError(t, err)
 	assert.Equal(t, 0, newCount)
 	assert.Equal(t, 0, skipped)
@@ -432,7 +447,7 @@ func TestSyncFolder_StatePersistedAfterDelivery(t *testing.T) {
 	cfg := newSyncConfig(dstAddr)
 	cfg.StateFile = stateFile
 
-	newCount, _, err := runSyncFolder(t, cfg, src, state, "INBOX", dstAddr)
+	newCount, _, err := runSyncFolder(t, cfg, src, state, "INBOX", dstAddr, 0, new(rune))
 	require.NoError(t, err)
 	assert.Equal(t, 1, newCount)
 
@@ -456,10 +471,60 @@ func TestSyncFolder_NonInboxFolder(t *testing.T) {
 	state := make(State)
 	cfg := newSyncConfig(dstAddr)
 
-	newCount, _, err := runSyncFolder(t, cfg, src, state, "Sent", dstAddr)
+	newCount, _, err := runSyncFolder(t, cfg, src, state, "Sent", dstAddr, 0, new(rune))
 	require.NoError(t, err)
 	assert.Equal(t, 1, newCount)
 	assert.True(t, state.Has("Sent", "<sent-1@test.example>"))
+}
+
+func TestSyncFolder_DelimiterTranslation(t *testing.T) {
+	srcAddr, srcUser := newTestServer(t)
+	dstAddr, _ := newTestServer(t)
+
+	// Source uses '.' as its hierarchy delimiter (e.g. Rackspace/SmarterMail
+	// style), while the dest test server (imapmemserver) always uses '/'.
+	const srcFolder = "INBOX.Sent"
+	require.NoError(t, srcUser.Create(srcFolder, nil))
+	appendMsg(t, srcUser, srcFolder, testMessage("delim-1", "Delim Test", "body"), nil, time.Now())
+
+	src := newSourceClient(dialInsecure(t, srcAddr))
+	state := make(State)
+	cfg := newSyncConfig(dstAddr)
+
+	var destDelim rune
+	newCount, _, err := runSyncFolder(t, cfg, src, state, srcFolder, dstAddr, '.', &destDelim)
+	require.NoError(t, err)
+	assert.Equal(t, 1, newCount)
+
+	// The destination delimiter must have been discovered and cached.
+	assert.Equal(t, '/', destDelim)
+
+	// State continues to be keyed by the untranslated source name.
+	assert.True(t, state.Has(srcFolder, "<delim-1@test.example>"))
+
+	// The message must have landed in the translated mailbox ("INBOX/Sent"),
+	// not the literal source name.
+	dstSrc := newSourceClient(dialInsecure(t, dstAddr))
+	metas, err := dstSrc.FetchHeaders("INBOX/Sent")
+	require.NoError(t, err)
+	require.Len(t, metas, 1)
+	assert.Equal(t, "<delim-1@test.example>", metas[0].DedupKey)
+
+	// A second folder synced in the same "run" must reuse the cached
+	// destDelim rather than issuing another LIST query — verified indirectly
+	// by confirming translation still applies correctly.
+	const srcFolder2 = "INBOX.Sent.Archive"
+	require.NoError(t, srcUser.Create(srcFolder2, nil))
+	appendMsg(t, srcUser, srcFolder2, testMessage("delim-2", "Delim Test 2", "body"), nil, time.Now())
+
+	newCount2, _, err := runSyncFolder(t, cfg, src, state, srcFolder2, dstAddr, '.', &destDelim)
+	require.NoError(t, err)
+	assert.Equal(t, 1, newCount2)
+
+	metas2, err := dstSrc.FetchHeaders("INBOX/Sent/Archive")
+	require.NoError(t, err)
+	require.Len(t, metas2, 1)
+	assert.Equal(t, "<delim-2@test.example>", metas2[0].DedupKey)
 }
 
 func TestSyncFolder_FlagsPreserved(t *testing.T) {
@@ -474,7 +539,7 @@ func TestSyncFolder_FlagsPreserved(t *testing.T) {
 	state := make(State)
 	cfg := newSyncConfig(dstAddr)
 
-	_, _, err := runSyncFolder(t, cfg, src, state, "INBOX", dstAddr)
+	_, _, err := runSyncFolder(t, cfg, src, state, "INBOX", dstAddr, 0, new(rune))
 	require.NoError(t, err)
 
 	// Fetch the delivered message from dest and check flags.

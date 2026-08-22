@@ -49,6 +49,29 @@ func TestSanitizeFlags(t *testing.T) {
 	}
 }
 
+func TestTranslateMailboxName(t *testing.T) {
+	tests := []struct {
+		name     string
+		mailbox  string
+		srcDelim rune
+		dstDelim rune
+		want     string
+	}{
+		{"identical delimiters", "INBOX.Sent Items", '.', '.', "INBOX.Sent Items"},
+		{"different delimiters nested", "INBOX.Sent Items", '.', '/', "INBOX/Sent Items"},
+		{"different delimiters multi-level", "INBOX.Foo.Bar", '.', '/', "INBOX/Foo/Bar"},
+		{"no delimiter present", "INBOX", '.', '/', "INBOX"},
+		{"unknown source delimiter", "INBOX.Sent", 0, '/', "INBOX.Sent"},
+		{"unknown dest delimiter", "INBOX.Sent", '.', 0, "INBOX.Sent"},
+		{"case and spacing untouched", "INBOX.Junk E-mail", '.', '/', "INBOX/Junk E-mail"},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			assert.Equal(t, tt.want, translateMailboxName(tt.mailbox, tt.srcDelim, tt.dstDelim))
+		})
+	}
+}
+
 func TestIsAlreadyExists(t *testing.T) {
 	tests := []struct {
 		name string

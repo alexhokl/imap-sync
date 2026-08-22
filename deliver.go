@@ -44,6 +44,34 @@ func (d *DestClient) Close() error {
 	return d.c.Close()
 }
 
+// defaultDelimiter is used when the destination server does not report a
+// hierarchy delimiter via LIST.
+const defaultDelimiter = '/'
+
+// Delimiter returns the destination server's mailbox hierarchy delimiter,
+// queried via an empty-mailbox-name LIST per RFC 3501 §6.3.8. Falls back to
+// defaultDelimiter if the server reports none.
+func (d *DestClient) Delimiter() (rune, error) {
+	items, err := d.c.List("", "", nil).Collect()
+	if err != nil {
+		return 0, fmt.Errorf("LIST delimiter: %w", err)
+	}
+	if len(items) == 0 || items[0].Delim == 0 {
+		return defaultDelimiter, nil
+	}
+	return items[0].Delim, nil
+}
+
+// translateMailboxName rewrites a mailbox name's hierarchy delimiter from
+// srcDelim to dstDelim. It is a no-op if either delimiter is unknown (0) or
+// they are already identical. Casing and spacing are never altered.
+func translateMailboxName(name string, srcDelim, dstDelim rune) string {
+	if srcDelim == 0 || dstDelim == 0 || srcDelim == dstDelim {
+		return name
+	}
+	return strings.ReplaceAll(name, string(srcDelim), string(dstDelim))
+}
+
 // EnsureFolder ensures mailbox exists on the destination, creating it if
 // needed. It does not fail if the mailbox already exists.
 func (d *DestClient) EnsureFolder(mailbox string) error {
