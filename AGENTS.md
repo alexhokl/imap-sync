@@ -44,9 +44,24 @@ No codegen, no migrations, no lockfile beyond `go.sum`.
   TLS.
 - No external services, network, or fixtures required to run the test suite.
 
+## Runtime behavior
+
+- `Append` runs flags through `sanitizeFlags`, stripping `\Recent` (server-owned,
+  RFC 3501 §2.3.2) and `\*`; forwarding `\Recent` makes Dovecot-style servers
+  reject the whole APPEND. All other flags and the internal date pass through.
+- State saves after each folder, only if that folder delivered ≥1 new message —
+  a mid-run interruption loses progress only for the folder in flight.
+- A folder that errors is logged; the run continues (one bad mailbox doesn't
+  abort the sync).
+- `--dry-run`: per-folder "new" count reports what would be delivered; nothing
+  is written, state is never saved.
+- Re-running without deleting the state file is safe and fast — messages are
+  header-fetched first, then skipped via dedup key before any full fetch/append.
+
 ## Build/release
 
 - `Dockerfile` builds a `scratch`-based static binary image (no shell, no
   libc) — any new dependency must be pure Go / CGO_ENABLED=0 compatible.
 - `cloudbuild.yaml` + `task tag` (auto-incrementing `0.1.x` git tags) drive
   releases; tags trigger the image build/push pipeline.
+
