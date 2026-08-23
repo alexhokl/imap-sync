@@ -22,6 +22,59 @@ Drop `--dry-run` once you're happy with the plan. Sync progress is persisted
 to `--state-file` (default `./sync-state.json`) after each folder, so a
 re-run will skip messages already synchronised.
 
+## Multiple accounts
+
+To back up more than one source account into a shared destination server,
+use `--config` (or `IMAP_SYNC_CONFIG`) pointing at a YAML file instead of the
+`--source-*`/`--dest-*` flags:
+
+```yaml
+dest:
+  host: <DEST_HOST>
+  skip_tls: false
+
+accounts:
+  - name: alice
+    source:
+      host: <SOURCE_HOST>
+      user: alice@example.com
+      pass: <ALICE_SOURCE_PASS>
+    dest:
+      user: alice-backup
+      pass: <ALICE_DEST_PASS>
+    # state_file: ./sync-state-alice.json   # optional, defaults to this
+  - name: bob
+    source:
+      host: <SOURCE_HOST>
+      user: bob@example.com
+      pass: <BOB_SOURCE_PASS>
+    dest:
+      user: bob-backup
+      pass: <BOB_DEST_PASS>
+```
+
+```sh
+./imap-sync --config accounts.yaml --dry-run
+```
+
+- `dest.host`/`dest.skip_tls` are shared by every account (one destination
+  server).
+- Each account under `accounts` pairs its own source mailbox with its own
+  destination login on that shared server — since each account authenticates
+  to the destination as a different user, their folders never collide.
+- Each account gets its own dedup state file (`state_file`, defaulting to
+  `./sync-state-<name>.json`), so progress tracking is fully isolated
+  per account.
+- Accounts are synced sequentially; if one account fails (bad credentials,
+  unreachable host, etc.) the error is logged and the remaining accounts
+  still run.
+- The config file contains plaintext credentials — keep it out of version
+  control and restrict its file permissions (e.g. `chmod 600`).
+- `--dry-run` still applies across every account in the config.
+
+When `--config` is not set, the original single-account `--source-*`/
+`--dest-*` flags and `IMAP_SYNC_*` env vars behave exactly as before.
+
 ## Docker Compose
 
 ```yaml

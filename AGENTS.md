@@ -18,18 +18,39 @@ No codegen, no migrations, no lockfile beyond `go.sum`.
 
 ## Architecture (all files at repo root, single `main` package)
 
-- `main.go` — CLI flag/env parsing (`IMAP_SYNC_*` env vars), orchestrates
-  `syncFolder` loop over source folders.
+- `main.go` — CLI flag/env parsing (`IMAP_SYNC_*` env vars), builds an
+  `AppConfig` (either a single implicit account from legacy `--source-*`/
+  `--dest-*` flags, or multiple accounts from `--config`), and loops
+  sequentially over accounts via `runAccount` (one account's errors are
+  logged and don't stop the rest).
+- `config.go` — multi-account YAML config: `AppConfig` (one shared
+  `DestHostConfig{Host,SkipTLS}` + `[]AccountConfig`), `loadConfigFile`,
+  validation, and per-account default state-file derivation from the
+  account name.
 - `fetch.go` — `SourceClient` (source IMAP: list folders, fetch headers/full
   messages).
 - `deliver.go` — `DestClient` (destination IMAP: ensure folder, append
   message).
 - `state.go` — `State` (map of mailbox -> set of dedup keys), persisted as
-  JSON to `--state-file` (default `./sync-state.json`), saved after each
+  JSON to each account's state file (one file per account; default
+  `./sync-state.json` for the legacy single-account path, or
+  `./sync-state-<name>.json` per account under `--config`), saved after each
   folder to avoid losing progress on interruption.
 - `bufio.go` — small buffered-reader helper.
 - Dedup key is derived from message headers (sha256), not IMAP UID, so
   re-syncing after a UID change doesn't create duplicates.
+
+## Multi-account model
+
+- One destination *server* (`dest.host`/`dest.skip_tls`) is shared across all
+  accounts, but each account authenticates to it with its **own** dest
+  user/pass — this is what keeps accounts' folders from colliding on the
+  shared server (no folder-name prefixing needed).
+- `dialSourceFn`/`dialDestFn` are package-level vars (default `DialSource`/
+  `DialDest`) so tests can swap in plain-TCP dialers reaching in-process
+  `imapmemserver` instances without TLS — this applies per-account now, not
+  just to the destination.
+- Config file credentials are plaintext; treat the file itself as a secret.
 
 ## Testing quirks
 
