@@ -19,7 +19,7 @@ task build
 ```
 
 Drop `--dry-run` once you're happy with the plan. Sync progress is persisted
-to `--state-file` (default `./sync-state.json`) after each folder, so a
+to `--state-file` (default `/state/sync-state.json`) after each folder, so a
 re-run will skip messages already synchronised.
 
 ## Multiple accounts
@@ -42,7 +42,7 @@ accounts:
     dest:
       user: alice-backup
       pass: <ALICE_DEST_PASS>
-    # state_file: ./sync-state-alice.json   # optional, defaults to this
+    # state_file: /state/sync-state-alice.json   # optional, defaults to this
   - name: bob
     source:
       host: <SOURCE_HOST>
@@ -63,8 +63,9 @@ accounts:
   destination login on that shared server — since each account authenticates
   to the destination as a different user, their folders never collide.
 - Each account gets its own dedup state file (`state_file`, defaulting to
-  `./sync-state-<name>.json`), so progress tracking is fully isolated
-  per account.
+  `/state/sync-state-<name>.json`), so progress tracking is fully isolated
+  per account. The parent directory (`/state` by default) is created
+  automatically if it doesn't already exist.
 - Accounts are synced sequentially; if one account fails (bad credentials,
   unreachable host, etc.) the error is logged and the remaining accounts
   still run.
@@ -88,12 +89,12 @@ services:
       IMAP_SYNC_DEST_HOST: <DEST_HOST>
       IMAP_SYNC_DEST_USER: <DEST_USER>
       IMAP_SYNC_DEST_PASS: <DEST_PASS>
-      IMAP_SYNC_STATE_FILE: /data/sync-state.json
+      IMAP_SYNC_STATE_FILE: /state/sync-state.json
       # Required for the self-signed cert from gen-certs.sh.
       # Keep trailing comments off this line.
       IMAP_SYNC_DEST_SKIP_TLS: true
     volumes:
-      - ./sync-state.json:/data/sync-state.json
+      - ./sync-state.json:/state/sync-state.json
 ```
 
 ```sh

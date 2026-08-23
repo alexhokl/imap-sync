@@ -154,7 +154,7 @@ func (c *AppConfig) applyDefaults() {
 	for i := range c.Accounts {
 		if c.Accounts[i].StateFile == "" {
 			safe := unsafeStateFileChars.ReplaceAllString(c.Accounts[i].Name, "_")
-			c.Accounts[i].StateFile = fmt.Sprintf("./sync-state-%s.json", safe)
+			c.Accounts[i].StateFile = fmt.Sprintf("/state/sync-state-%s.json", safe)
 		}
 	}
 }

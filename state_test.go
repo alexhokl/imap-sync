@@ -109,6 +109,21 @@ func TestSave_Atomic(t *testing.T) {
 	assert.Contains(t, raw["INBOX"], "key1")
 }
 
+func TestSave_CreatesMissingParentDirectory(t *testing.T) {
+	dir := t.TempDir()
+	path := filepath.Join(dir, "nested", "sub", "state.json")
+
+	s := make(State)
+	s.Add("INBOX", "key1")
+	require.NoError(t, s.Save(path))
+
+	data, err := os.ReadFile(path)
+	require.NoError(t, err)
+	var raw map[string][]string
+	require.NoError(t, json.Unmarshal(data, &raw))
+	assert.Contains(t, raw["INBOX"], "key1")
+}
+
 func TestSave_OverwriteExisting(t *testing.T) {
 	path := filepath.Join(t.TempDir(), "state.json")
 

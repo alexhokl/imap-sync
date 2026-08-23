@@ -244,7 +244,7 @@ func parseConfig() *AppConfig {
 	flag.StringVar(&destPass, "dest-pass", envOr("IMAP_SYNC_DEST_PASS", ""), "Destination IMAP password")
 	flag.BoolVar(&destSkipTLS, "dest-skip-tls", envBool("IMAP_SYNC_DEST_SKIP_TLS", false), "Skip TLS verification for destination (self-signed cert)")
 
-	flag.StringVar(&stateFile, "state-file", envOr("IMAP_SYNC_STATE_FILE", "./sync-state.json"), "Path to sync state file")
+	flag.StringVar(&stateFile, "state-file", envOr("IMAP_SYNC_STATE_FILE", "/state/sync-state.json"), "Path to sync state file")
 	flag.BoolVar(&dryRun, "dry-run", false, "Fetch headers and log without synchronising")
 
 	flag.Parse()

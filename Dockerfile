@@ -10,4 +10,6 @@ FROM scratch
 COPY --from=build /imap-sync /imap-sync
 COPY --from=build /etc/ssl/certs/ca-certificates.crt /etc/ssl/certs/
 
+VOLUME ["/state"]
+
 ENTRYPOINT ["/imap-sync"]

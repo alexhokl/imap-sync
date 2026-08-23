@@ -56,7 +56,7 @@ accounts:
 	assert.Equal(t, "alicepass", alice.SourcePass)
 	assert.Equal(t, "alice-backup", alice.DestUser)
 	assert.Equal(t, "alicebackuppass", alice.DestPass)
-	assert.Equal(t, "./sync-state-alice.json", alice.StateFile, "default state file derived from name")
+	assert.Equal(t, "/state/sync-state-alice.json", alice.StateFile, "default state file derived from name")
 
 	bob := cfg.Accounts[1]
 	assert.Equal(t, "./custom-bob-state.json", bob.StateFile, "explicit state_file is preserved")
@@ -163,5 +163,5 @@ func TestApplyDefaults_SanitizesStateFileName(t *testing.T) {
 		},
 	}
 	cfg.applyDefaults()
-	assert.Equal(t, "./sync-state-alice_bob_weird_name.json", cfg.Accounts[0].StateFile)
+	assert.Equal(t, "/state/sync-state-alice_bob_weird_name.json", cfg.Accounts[0].StateFile)
 }

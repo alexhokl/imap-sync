@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"net/textproto"
 	"os"
+	"path/filepath"
 	"strings"
 )
 
@@ -75,6 +76,11 @@ func (s State) Save(path string) error {
 		return fmt.Errorf("marshal state: %w", err)
 	}
 	tmp := path + ".tmp"
+	if dir := filepath.Dir(path); dir != "." {
+		if err := os.MkdirAll(dir, 0o750); err != nil {
+			return fmt.Errorf("create state directory: %w", err)
+		}
+	}
 	if err := os.WriteFile(tmp, data, 0o600); err != nil {
 		return fmt.Errorf("write state tmp: %w", err)
 	}

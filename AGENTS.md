@@ -33,8 +33,9 @@ No codegen, no migrations, no lockfile beyond `go.sum`.
   message).
 - `state.go` — `State` (map of mailbox -> set of dedup keys), persisted as
   JSON to each account's state file (one file per account; default
-  `./sync-state.json` for the legacy single-account path, or
-  `./sync-state-<name>.json` per account under `--config`), saved after each
+  `/state/sync-state.json` for the legacy single-account path, or
+  `/state/sync-state-<name>.json` per account under `--config`; `Save`
+  creates missing parent directories on demand), saved after each
   folder to avoid losing progress on interruption.
 - `bufio.go` — small buffered-reader helper.
 - Dedup key is derived from message headers (sha256), not IMAP UID, so
