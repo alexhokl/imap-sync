@@ -82,9 +82,6 @@ services:
   imap-sync:
     image: asia-east1-docker.pkg.dev/craffy/public/imap-sync:<TAG>
     environment:
-      IMAP_PORT: 143
-      IMAPS_PORT: 993
-      TZ: "UTC"
       IMAP_SYNC_SOURCE_HOST: <SOURCE_HOST>
       IMAP_SYNC_SOURCE_USER: <SOURCE_USER>
       IMAP_SYNC_SOURCE_PASS: <SOURCE_PASS>
@@ -105,3 +102,4 @@ docker compose up
 
 The state file is mounted as a volume so dedup state survives container
 restarts.
+
