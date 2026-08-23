@@ -6,6 +6,7 @@ import (
 	"log"
 	"os"
 	"strconv"
+	"strings"
 )
 
 // dialDestFn is the function used by syncFolder to connect to the destination.
@@ -115,7 +116,13 @@ func syncFolder(cfg *Config, src *SourceClient, state State, folder string, srcD
 
 	// Partition into new vs already-seen.
 	var toFetch []MessageMeta
+	var messageIDCount, hashCount int
 	for _, m := range metas {
+		if strings.HasPrefix(m.DedupKey, "sha256:") {
+			hashCount++
+		} else {
+			messageIDCount++
+		}
 		if state.Has(folder, m.DedupKey) {
 			skippedCount++
 		} else {
@@ -124,6 +131,8 @@ func syncFolder(cfg *Config, src *SourceClient, state State, folder string, srcD
 	}
 	log.Printf("[%s] %d message(s): %d new, %d already synced",
 		folder, len(metas), len(toFetch), skippedCount)
+	log.Printf("[%s] dedup keys: %d from Message-Id, %d from sha256 fallback",
+		folder, messageIDCount, hashCount)
 
 	if len(toFetch) == 0 || cfg.DryRun {
 		if cfg.DryRun && len(toFetch) > 0 {
