@@ -2,6 +2,7 @@ package main
 
 import (
 	"bytes"
+	"context"
 	"fmt"
 	"net"
 	"path/filepath"
@@ -267,6 +268,7 @@ func newSyncConfig(destAddr string) *Config {
 // to preserve prior (no-translation) behavior in tests that don't care about it.
 func runSyncFolder(
 	t *testing.T,
+	ctx context.Context,
 	cfg *Config,
 	src *SourceClient,
 	state State,
@@ -293,7 +295,7 @@ func runSyncFolder(
 	t.Cleanup(func() { dialDestFn = orig })
 
 	cfg.DestHost = destAddr
-	return syncFolder(cfg, src, state, folder, srcDelim, destDelim)
+	return syncFolder(ctx, cfg, src, state, folder, srcDelim, destDelim)
 }
 
 func TestSyncFolder_AllNew(t *testing.T) {
@@ -307,7 +309,7 @@ func TestSyncFolder_AllNew(t *testing.T) {
 	state := make(State)
 	cfg := newSyncConfig(dstAddr)
 
-	newCount, skipped, err := runSyncFolder(t, cfg, src, state, "INBOX", dstAddr, 0, new(rune))
+	newCount, skipped, err := runSyncFolder(t, context.Background(), cfg, src, state, "INBOX", dstAddr, 0, new(rune))
 	require.NoError(t, err)
 	assert.Equal(t, 2, newCount)
 	assert.Equal(t, 0, skipped)
@@ -329,7 +331,7 @@ func TestSyncFolder_AllSkipped(t *testing.T) {
 	src := newSourceClient(dialInsecure(t, srcAddr))
 	cfg := newSyncConfig(dstAddr)
 
-	newCount, skipped, err := runSyncFolder(t, cfg, src, state, "INBOX", dstAddr, 0, new(rune))
+	newCount, skipped, err := runSyncFolder(t, context.Background(), cfg, src, state, "INBOX", dstAddr, 0, new(rune))
 	require.NoError(t, err)
 	assert.Equal(t, 0, newCount)
 	assert.Equal(t, 2, skipped)
@@ -350,7 +352,7 @@ func TestSyncFolder_PartialSkip(t *testing.T) {
 	src := newSourceClient(dialInsecure(t, srcAddr))
 	cfg := newSyncConfig(dstAddr)
 
-	newCount, skipped, err := runSyncFolder(t, cfg, src, state, "INBOX", dstAddr, 0, new(rune))
+	newCount, skipped, err := runSyncFolder(t, context.Background(), cfg, src, state, "INBOX", dstAddr, 0, new(rune))
 	require.NoError(t, err)
 	assert.Equal(t, 2, newCount)
 	assert.Equal(t, 1, skipped)
@@ -368,7 +370,7 @@ func TestSyncFolder_DryRun(t *testing.T) {
 	cfg := newSyncConfig(dstAddr)
 	cfg.DryRun = true
 
-	newCount, skipped, err := runSyncFolder(t, cfg, src, state, "INBOX", dstAddr, 0, new(rune))
+	newCount, skipped, err := runSyncFolder(t, context.Background(), cfg, src, state, "INBOX", dstAddr, 0, new(rune))
 	require.NoError(t, err)
 	assert.Equal(t, 1, newCount, "dry-run reports 1 new")
 	assert.Equal(t, 0, skipped)
@@ -429,7 +431,7 @@ func TestSyncFolder_EmptyMailbox(t *testing.T) {
 	state := make(State)
 	cfg := newSyncConfig(dstAddr)
 
-	newCount, skipped, err := runSyncFolder(t, cfg, src, state, "INBOX", dstAddr, 0, new(rune))
+	newCount, skipped, err := runSyncFolder(t, context.Background(), cfg, src, state, "INBOX", dstAddr, 0, new(rune))
 	require.NoError(t, err)
 	assert.Equal(t, 0, newCount)
 	assert.Equal(t, 0, skipped)
@@ -447,7 +449,7 @@ func TestSyncFolder_StatePersistedAfterDelivery(t *testing.T) {
 	cfg := newSyncConfig(dstAddr)
 	cfg.StateFile = stateFile
 
-	newCount, _, err := runSyncFolder(t, cfg, src, state, "INBOX", dstAddr, 0, new(rune))
+	newCount, _, err := runSyncFolder(t, context.Background(), cfg, src, state, "INBOX", dstAddr, 0, new(rune))
 	require.NoError(t, err)
 	assert.Equal(t, 1, newCount)
 
@@ -471,7 +473,7 @@ func TestSyncFolder_NonInboxFolder(t *testing.T) {
 	state := make(State)
 	cfg := newSyncConfig(dstAddr)
 
-	newCount, _, err := runSyncFolder(t, cfg, src, state, "Sent", dstAddr, 0, new(rune))
+	newCount, _, err := runSyncFolder(t, context.Background(), cfg, src, state, "Sent", dstAddr, 0, new(rune))
 	require.NoError(t, err)
 	assert.Equal(t, 1, newCount)
 	assert.True(t, state.Has("Sent", "<sent-1@test.example>"))
@@ -492,7 +494,7 @@ func TestSyncFolder_DelimiterTranslation(t *testing.T) {
 	cfg := newSyncConfig(dstAddr)
 
 	var destDelim rune
-	newCount, _, err := runSyncFolder(t, cfg, src, state, srcFolder, dstAddr, '.', &destDelim)
+	newCount, _, err := runSyncFolder(t, context.Background(), cfg, src, state, srcFolder, dstAddr, '.', &destDelim)
 	require.NoError(t, err)
 	assert.Equal(t, 1, newCount)
 
@@ -517,7 +519,7 @@ func TestSyncFolder_DelimiterTranslation(t *testing.T) {
 	require.NoError(t, srcUser.Create(srcFolder2, nil))
 	appendMsg(t, srcUser, srcFolder2, testMessage("delim-2", "Delim Test 2", "body"), nil, time.Now())
 
-	newCount2, _, err := runSyncFolder(t, cfg, src, state, srcFolder2, dstAddr, '.', &destDelim)
+	newCount2, _, err := runSyncFolder(t, context.Background(), cfg, src, state, srcFolder2, dstAddr, '.', &destDelim)
 	require.NoError(t, err)
 	assert.Equal(t, 1, newCount2)
 
@@ -539,7 +541,7 @@ func TestSyncFolder_FlagsPreserved(t *testing.T) {
 	state := make(State)
 	cfg := newSyncConfig(dstAddr)
 
-	_, _, err := runSyncFolder(t, cfg, src, state, "INBOX", dstAddr, 0, new(rune))
+	_, _, err := runSyncFolder(t, context.Background(), cfg, src, state, "INBOX", dstAddr, 0, new(rune))
 	require.NoError(t, err)
 
 	// Fetch the delivered message from dest and check flags.

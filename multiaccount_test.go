@@ -1,6 +1,7 @@
 package main
 
 import (
+	"context"
 	"net"
 	"path/filepath"
 	"testing"
@@ -132,12 +133,12 @@ func TestRunAccount_MultipleAccountsSharedDest_NoCollision(t *testing.T) {
 		}
 	}
 
-	newA, skippedA, err := runAccount(destCfgFor(aliceAcc), aliceAcc)
+	newA, skippedA, err := runAccount(context.Background(), destCfgFor(aliceAcc), aliceAcc)
 	require.NoError(t, err)
 	assert.Equal(t, 1, newA)
 	assert.Equal(t, 0, skippedA)
 
-	newB, skippedB, err := runAccount(destCfgFor(bobAcc), bobAcc)
+	newB, skippedB, err := runAccount(context.Background(), destCfgFor(bobAcc), bobAcc)
 	require.NoError(t, err)
 	assert.Equal(t, 1, newB)
 	assert.Equal(t, 0, skippedB)
@@ -198,12 +199,12 @@ func TestRunAccount_OneAccountFailureDoesNotAffectOther(t *testing.T) {
 		StateFile:  filepath.Join(tmpDir, "bob.json"),
 	}
 
-	_, _, err := runAccount(&Config{
+	_, _, err := runAccount(context.Background(), &Config{
 		DestHost: destAddr, DestUser: aliceAcc.DestUser, DestPass: aliceAcc.DestPass, StateFile: aliceAcc.StateFile,
 	}, aliceAcc)
 	assert.Error(t, err, "alice's source dial should fail")
 
-	newB, skippedB, err := runAccount(&Config{
+	newB, skippedB, err := runAccount(context.Background(), &Config{
 		DestHost: destAddr, DestUser: bobAcc.DestUser, DestPass: bobAcc.DestPass, StateFile: bobAcc.StateFile,
 	}, bobAcc)
 	require.NoError(t, err, "bob's run must succeed independently of alice's failure")

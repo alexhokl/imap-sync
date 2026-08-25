@@ -1,12 +1,15 @@
 package main
 
 import (
+	"context"
 	"flag"
 	"fmt"
 	"log"
 	"os"
+	"os/signal"
 	"strconv"
 	"strings"
+	"syscall"
 )
 
 // dialDestFn is the function used by syncFolder to connect to the destination.
@@ -42,8 +45,28 @@ func main() {
 		log.Printf("DRY RUN — no messages will be synchronised")
 	}
 
+	// Graceful shutdown on SIGTERM/SIGINT. The first signal cancels the
+	// sync loop at the next safe point (between messages, folders, or
+	// accounts) so state stays consistent on disk and the process exits 0.
+	// A second signal forces an immediate exit (130) without waiting.
+	sigCh := make(chan os.Signal, 2)
+	signal.Notify(sigCh, syscall.SIGTERM, syscall.SIGINT)
+	ctx, cancel := context.WithCancel(context.Background())
+	go func() {
+		sig := <-sigCh
+		log.Printf("received %s, shutting down gracefully...", sig)
+		cancel()
+		<-sigCh
+		log.Printf("second signal received, forcing exit")
+		os.Exit(130)
+	}()
+	defer cancel()
+
 	var totalNew, totalSkipped int
 	for i := range appCfg.Accounts {
+		if ctx.Err() != nil {
+			break
+		}
 		acc := &appCfg.Accounts[i]
 		cfg := &Config{
 			DestHost:    appCfg.Dest.Host,
@@ -54,7 +77,7 @@ func main() {
 			DryRun:      appCfg.DryRun,
 		}
 
-		newCount, skippedCount, err := runAccount(cfg, acc)
+		newCount, skippedCount, err := runAccount(ctx, cfg, acc)
 		if err != nil {
 			log.Printf("[%s] ERROR: %v (continuing with next account)", acc.Name, err)
 			continue
@@ -71,7 +94,7 @@ func main() {
 // destination login. Errors from an individual folder are logged and do not
 // abort the rest of the account's folders; state is saved after each folder
 // that delivered new messages.
-func runAccount(cfg *Config, acc *AccountConfig) (totalNew, totalSkipped int, err error) {
+func runAccount(ctx context.Context, cfg *Config, acc *AccountConfig) (totalNew, totalSkipped int, err error) {
 	log.Printf("[%s] source: %s (user: %s)", acc.Name, acc.SourceHost, acc.SourceUser)
 	log.Printf("[%s] state:  %s", acc.Name, cfg.StateFile)
 
@@ -105,7 +128,10 @@ func runAccount(cfg *Config, acc *AccountConfig) (totalNew, totalSkipped int, er
 	var destDelim rune // fetched once, on the first per-account dest connection
 
 	for _, folder := range folders {
-		newCount, skippedCount, ferr := syncFolder(cfg, src, state, folder, srcDelim, &destDelim)
+		if ctx.Err() != nil {
+			break
+		}
+		newCount, skippedCount, ferr := syncFolder(ctx, cfg, src, state, folder, srcDelim, &destDelim)
 		if ferr != nil {
 			log.Printf("[%s] ERROR syncing %q: %v (continuing)", acc.Name, folder, ferr)
 			continue
@@ -136,7 +162,7 @@ func testDestConnection(cfg *Config) error {
 	return dest.Close()
 }
 
-func syncFolder(cfg *Config, src *SourceClient, state State, folder string, srcDelim rune, destDelim *rune) (newCount, skippedCount int, err error) {
+func syncFolder(ctx context.Context, cfg *Config, src *SourceClient, state State, folder string, srcDelim rune, destDelim *rune) (newCount, skippedCount int, err error) {
 	log.Printf("[%s] fetching headers...", folder)
 
 	metas, err := src.FetchHeaders(folder)
@@ -175,6 +201,11 @@ func syncFolder(cfg *Config, src *SourceClient, state State, folder string, srcD
 		return len(toFetch), skippedCount, nil
 	}
 
+	// Graceful shutdown: bail out before opening a destination connection.
+	if ctx.Err() != nil {
+		return len(toFetch), skippedCount, nil
+	}
+
 	// Dial destination only when there is work to do.
 	log.Printf("[%s] connecting to dest to push %d message(s)...", folder, len(toFetch))
 	dest, err := dialDestFn(cfg.DestHost, cfg.DestUser, cfg.DestPass, cfg.DestSkipTLS)
@@ -198,6 +229,19 @@ func syncFolder(cfg *Config, src *SourceClient, state State, folder string, srcD
 	}
 
 	for i, meta := range toFetch {
+		// Graceful shutdown: save progress made so far in this folder and
+		// exit. The next run re-fetches headers and skips the delivered
+		// messages via the dedup keys we just persisted.
+		if ctx.Err() != nil {
+			if !cfg.DryRun && newCount > 0 {
+				if serr := state.Save(cfg.StateFile); serr != nil {
+					log.Printf("[%s] shutdown save: %v", folder, serr)
+				}
+			}
+			log.Printf("[%s] shutdown: saved %d/%d message(s)", folder, newCount, len(toFetch))
+			return newCount, skippedCount, nil
+		}
+
 		msg, err := src.FetchFull(meta.UID)
 		if err != nil {
 			log.Printf("[%s] warning: fetch UID %d: %v — skipping", folder, meta.UID, err)

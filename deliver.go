@@ -12,6 +12,10 @@ import (
 // DestClient wraps an IMAP client connected to the local Dovecot server.
 type DestClient struct {
 	c *imapclient.Client
+
+	// onAppend, if non-nil, is invoked at the start of each successful
+	// Append. Used only by tests to observe/cancel mid-folder delivery.
+	onAppend func()
 }
 
 // newDestClient wraps an existing IMAP client as a DestClient.
@@ -94,6 +98,9 @@ func (d *DestClient) EnsureFolder(mailbox string) error {
 // Append delivers one message to mailbox on the destination server.
 // Original flags and internal date are preserved.
 func (d *DestClient) Append(mailbox string, msg *FullMessage) error {
+	if d.onAppend != nil {
+		d.onAppend()
+	}
 	opts := &imap.AppendOptions{
 		Flags: sanitizeFlags(msg.Flags),
 		Time:  msg.InternalDate,
