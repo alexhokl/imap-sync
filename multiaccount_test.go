@@ -76,7 +76,7 @@ func withInsecureDialers(t *testing.T) {
 	t.Cleanup(func() { dialDestFn = origDest })
 
 	origSrc := dialSourceFn
-	dialSourceFn = func(host, user, pass string) (*SourceClient, error) {
+	dialSourceFn = func(host, user, pass string, skipTLS bool) (*SourceClient, error) {
 		c, err := imapclient.DialInsecure(host, nil)
 		if err != nil {
 			return nil, err
@@ -347,7 +347,7 @@ func TestPreflightAccounts_CancelledCtx(t *testing.T) {
 	t.Cleanup(func() { dialDestFn = origDest })
 
 	origSrc := dialSourceFn
-	dialSourceFn = func(host, user, pass string) (*SourceClient, error) {
+	dialSourceFn = func(host, user, pass string, skipTLS bool) (*SourceClient, error) {
 		t.Fatal("dialSourceFn must not be called when context is cancelled")
 		return nil, nil
 	}

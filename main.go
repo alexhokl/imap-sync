@@ -117,7 +117,7 @@ func preflightAccounts(ctx context.Context, appCfg *AppConfig) error {
 		cfg := configForAccount(appCfg, acc)
 
 		log.Printf("[%s] preflight: checking source credentials...", acc.Name)
-		src, err := dialSourceFn(acc.SourceHost, acc.SourceUser, acc.SourcePass)
+		src, err := dialSourceFn(acc.SourceHost, acc.SourceUser, acc.SourcePass, acc.SourceSkipTLS)
 		if err != nil {
 			return fmt.Errorf("account %q source: %w", acc.Name, err)
 		}
@@ -146,7 +146,7 @@ func runAccount(ctx context.Context, cfg *Config, acc *AccountConfig) (totalNew,
 	}
 
 	log.Printf("[%s] connecting to source...", acc.Name)
-	src, err := dialSourceFn(acc.SourceHost, acc.SourceUser, acc.SourcePass)
+	src, err := dialSourceFn(acc.SourceHost, acc.SourceUser, acc.SourcePass, acc.SourceSkipTLS)
 	if err != nil {
 		return 0, 0, fmt.Errorf("source: %w", err)
 	}
@@ -306,6 +306,7 @@ func syncFolder(ctx context.Context, cfg *Config, src *SourceClient, state State
 func parseConfig() *AppConfig {
 	var configPath string
 	var sourceHost, sourceUser, sourcePass string
+	var sourceSkipTLS bool
 	var destHost, destUser, destPass string
 	var destSkipTLS bool
 	var stateFile string
@@ -316,6 +317,7 @@ func parseConfig() *AppConfig {
 	flag.StringVar(&sourceHost, "source-host", envOr("IMAP_SYNC_SOURCE_HOST", ""), "Source IMAP host:port")
 	flag.StringVar(&sourceUser, "source-user", envOr("IMAP_SYNC_SOURCE_USER", ""), "Source IMAP username")
 	flag.StringVar(&sourcePass, "source-pass", envOr("IMAP_SYNC_SOURCE_PASS", ""), "Source IMAP password")
+	flag.BoolVar(&sourceSkipTLS, "source-skip-tls", envBool("IMAP_SYNC_SOURCE_SKIP_TLS", false), "Skip TLS verification for source (expired or self-signed cert)")
 
 	flag.StringVar(&destHost, "dest-host", envOr("IMAP_SYNC_DEST_HOST", "localhost:993"), "Destination IMAP host:port")
 	flag.StringVar(&destUser, "dest-user", envOr("IMAP_SYNC_DEST_USER", ""), "Destination IMAP username")
@@ -365,6 +367,7 @@ func parseConfig() *AppConfig {
 				SourceHost: sourceHost,
 				SourceUser: sourceUser,
 				SourcePass: sourcePass,
+				SourceSkipTLS: sourceSkipTLS,
 				DestUser:   destUser,
 				DestPass:   destPass,
 				StateFile:  stateFile,

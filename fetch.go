@@ -1,6 +1,7 @@
 package main
 
 import (
+	"crypto/tls"
 	"fmt"
 	"log"
 	"time"
@@ -22,8 +23,14 @@ func newSourceClient(c *imapclient.Client) *SourceClient {
 }
 
 // DialSource connects to the source IMAP server over TLS and authenticates.
-func DialSource(host, user, pass string) (*SourceClient, error) {
-	c, err := imapclient.DialTLS(host, nil)
+// If skipTLSVerify is true, certificate verification is skipped (for servers
+// with expired or self-signed certificates).
+func DialSource(host, user, pass string, skipTLSVerify bool) (*SourceClient, error) {
+	opts := &imapclient.Options{}
+	if skipTLSVerify {
+		opts.TLSConfig = &tls.Config{InsecureSkipVerify: true} // #nosec G402 -- opt-in via source.skip_tls for servers with untrusted certs
+	}
+	c, err := imapclient.DialTLS(host, opts)
 	if err != nil {
 		return nil, fmt.Errorf("dial source %s: %w", host, err)
 	}

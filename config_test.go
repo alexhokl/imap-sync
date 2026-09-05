@@ -54,12 +54,46 @@ accounts:
 	assert.Equal(t, "imap.example.com:993", alice.SourceHost)
 	assert.Equal(t, "alice@example.com", alice.SourceUser)
 	assert.Equal(t, "alicepass", alice.SourcePass)
+	assert.False(t, alice.SourceSkipTLS, "source.skip_tls defaults to false when absent")
 	assert.Equal(t, "alice-backup", alice.DestUser)
 	assert.Equal(t, "alicebackuppass", alice.DestPass)
 	assert.Equal(t, "/state/sync-state-alice.json", alice.StateFile, "default state file derived from name")
 
 	bob := cfg.Accounts[1]
 	assert.Equal(t, "./custom-bob-state.json", bob.StateFile, "explicit state_file is preserved")
+}
+
+func TestLoadConfigFile_SourceSkipTLS(t *testing.T) {
+	path := writeConfigFile(t, `
+dest:
+  host: localhost:993
+
+accounts:
+  - name: alice
+    source:
+      host: imap.example.com:993
+      user: alice@example.com
+      pass: alicepass
+      skip_tls: true
+    dest:
+      user: alice-backup
+      pass: alicebackuppass
+  - name: bob
+    source:
+      host: imap.other.example:993
+      user: bob@example.com
+      pass: bobpass
+      skip_tls: false
+    dest:
+      user: bob-backup
+      pass: bobbackuppass
+`)
+
+	cfg, err := loadConfigFile(path)
+	require.NoError(t, err)
+	require.Len(t, cfg.Accounts, 2)
+	assert.True(t, cfg.Accounts[0].SourceSkipTLS, "source.skip_tls: true is parsed")
+	assert.False(t, cfg.Accounts[1].SourceSkipTLS, "explicit skip_tls: false is parsed")
 }
 
 func TestLoadConfigFile_MissingDestHost(t *testing.T) {

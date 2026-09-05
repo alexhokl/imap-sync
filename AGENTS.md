@@ -52,6 +52,14 @@ No codegen, no migrations, no lockfile beyond `go.sum`.
   `imapmemserver` instances without TLS — this applies per-account now, not
   just to the destination.
 - Config file credentials are plaintext; treat the file itself as a secret.
+- TLS verification is skippable independently on both sides: `dest.skip_tls`
+  (shared, in `dest:`) and per-account `source.skip_tls` (in each account's
+  `source:` block). Both default to `false`; when set they pass
+  `InsecureSkipVerify` into the respective dial's `tls.Config`. The source side
+  is per-account because different accounts may point at different source
+  servers. The legacy single-account path has the matching
+  `--source-skip-tls` / `IMAP_SYNC_SOURCE_SKIP_TLS` and
+  `--dest-skip-tls` / `IMAP_SYNC_DEST_SKIP_TLS` flags.
 
 ## Testing quirks
 

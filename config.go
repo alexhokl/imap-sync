@@ -22,9 +22,10 @@ type DestHostConfig struct {
 type AccountConfig struct {
 	Name string
 
-	SourceHost string
-	SourceUser string
-	SourcePass string
+	SourceHost    string
+	SourceUser    string
+	SourcePass    string
+	SourceSkipTLS bool
 
 	DestUser string
 	DestPass string
@@ -51,9 +52,10 @@ type yamlConfigFile struct {
 	Accounts []struct {
 		Name   string `yaml:"name"`
 		Source struct {
-			Host string `yaml:"host"`
-			User string `yaml:"user"`
-			Pass string `yaml:"pass"`
+			Host    string `yaml:"host"`
+			User    string `yaml:"user"`
+			Pass    string `yaml:"pass"`
+			SkipTLS bool   `yaml:"skip_tls"`
 		} `yaml:"source"`
 		Dest struct {
 			User string `yaml:"user"`
@@ -89,13 +91,14 @@ func loadConfigFile(path string) (*AppConfig, error) {
 	seenNames := make(map[string]struct{}, len(raw.Accounts))
 	for i, a := range raw.Accounts {
 		acc := AccountConfig{
-			Name:       a.Name,
-			SourceHost: a.Source.Host,
-			SourceUser: a.Source.User,
-			SourcePass: a.Source.Pass,
-			DestUser:   a.Dest.User,
-			DestPass:   a.Dest.Pass,
-			StateFile:  a.StateFile,
+			Name:          a.Name,
+			SourceHost:    a.Source.Host,
+			SourceUser:    a.Source.User,
+			SourcePass:    a.Source.Pass,
+			SourceSkipTLS: a.Source.SkipTLS,
+			DestUser:      a.Dest.User,
+			DestPass:      a.Dest.Pass,
+			StateFile:     a.StateFile,
 		}
 		if _, dup := seenNames[acc.Name]; dup {
 			return nil, fmt.Errorf("accounts[%d]: duplicate account name %q", i, acc.Name)
