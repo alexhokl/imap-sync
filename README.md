@@ -66,9 +66,11 @@ accounts:
   `/state/sync-state-<name>.json`), so progress tracking is fully isolated
   per account. The parent directory (`/state` by default) is created
   automatically if it doesn't already exist.
-- Accounts are synced sequentially; if one account fails (bad credentials,
-  unreachable host, etc.) the error is logged and the remaining accounts
-  still run.
+- Accounts are synced sequentially; if one account fails at runtime
+  (unreachable host, folder error, etc.) the error is logged and the
+  remaining accounts still run. Credentials are verified for *all* accounts
+  up front (source and destination logins) — if any account's credentials
+  fail, the whole run aborts before any data is pulled.
 - The config file contains plaintext credentials — keep it out of version
   control and restrict its file permissions (e.g. `chmod 600`).
 - `--dry-run` still applies across every account in the config.

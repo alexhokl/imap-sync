@@ -75,10 +75,14 @@ No codegen, no migrations, no lockfile beyond `go.sum`.
   a mid-run interruption loses progress only for the folder in flight.
 - A folder that errors is logged; the run continues (one bad mailbox doesn't
   abort the sync).
-- `--dry-run`: once per run, dials/logs in to the destination and closes
-  immediately (`testDestConnection`) to verify dest reachability/credentials,
-  then per-folder reports the "new" count that would be delivered; nothing
-  is written, state is never saved.
+- Credential preflight: at startup, in every mode (including `--dry-run`),
+  `preflightAccounts` verifies every account's source login (dial+login+close)
+  and destination login (`testDestConnection`) before any folder/headers/
+  messages are pulled. Any failure aborts the whole run with exit 1 — this is
+  the one case where a per-account error does NOT allow the rest to continue.
+- `--dry-run`: per-folder reports the "new" count that would be delivered;
+  nothing is written, state is never saved. (Dest credential verification
+  happens in the shared startup preflight, not in the dry-run path.)
 - Re-running without deleting the state file is safe and fast — messages are
   header-fetched first, then skipped via dedup key before any full fetch/append.
 

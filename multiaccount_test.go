@@ -211,3 +211,150 @@ func TestRunAccount_OneAccountFailureDoesNotAffectOther(t *testing.T) {
 	assert.Equal(t, 1, newB)
 	assert.Equal(t, 0, skippedB)
 }
+
+// ── preflightAccounts ────────────────────────────────────────────────────────
+
+// TestPreflightAccounts_Success verifies that preflight passes when every
+// account's source and destination logins work.
+func TestPreflightAccounts_Success(t *testing.T) {
+	withInsecureDialers(t)
+
+	aliceSrcAddr, _ := newTestServer(t)
+	bobSrcAddr, _ := newTestServer(t)
+	destAddr, _, _ := newSharedDestServer(t)
+
+	appCfg := &AppConfig{
+		Dest: DestHostConfig{Host: destAddr},
+		Accounts: []AccountConfig{
+			{
+				Name:       "alice",
+				SourceHost: aliceSrcAddr,
+				SourceUser: testUser,
+				SourcePass: testPass,
+				DestUser:   "alice-backup",
+				DestPass:   "alicebackuppass",
+			},
+			{
+				Name:       "bob",
+				SourceHost: bobSrcAddr,
+				SourceUser: testUser,
+				SourcePass: testPass,
+				DestUser:   "bob-backup",
+				DestPass:   "bobbackuppass",
+			},
+		},
+	}
+
+	require.NoError(t, preflightAccounts(context.Background(), appCfg))
+}
+
+// TestPreflightAccounts_BadDestCred verifies that a wrong destination
+// password in one account fails the preflight and prevents any data pull —
+// the other account's mailbox must remain empty.
+func TestPreflightAccounts_BadDestCred(t *testing.T) {
+	withInsecureDialers(t)
+
+	aliceSrcAddr, aliceSrcUser := newTestServer(t)
+	appendMsg(t, aliceSrcUser, "INBOX", testMessage("alice-pf", "Alice PF", "body"), nil, time.Now())
+
+	destAddr, _, _ := newSharedDestServer(t)
+
+	appCfg := &AppConfig{
+		Dest: DestHostConfig{Host: destAddr},
+		Accounts: []AccountConfig{
+			{
+				Name:       "alice",
+				SourceHost: aliceSrcAddr,
+				SourceUser: testUser,
+				SourcePass: testPass,
+				DestUser:   "alice-backup",
+				DestPass:   "wrong-dest-pass",
+			},
+			{
+				Name:       "bob",
+				SourceHost: "unused",
+				SourceUser: testUser,
+				SourcePass: testPass,
+				DestUser:   "bob-backup",
+				DestPass:   "bobbackuppass",
+			},
+		},
+	}
+
+	err := preflightAccounts(context.Background(), appCfg)
+	require.Error(t, err, "bad dest credential must fail the preflight")
+	assert.Contains(t, err.Error(), "alice", "error must identify the failing account")
+
+	// Nothing may have been pulled or delivered.
+	aliceDest := newSourceClient(dialInsecureAs(t, destAddr, "alice-backup", "alicebackuppass"))
+	metas, err := aliceDest.FetchHeaders("INBOX")
+	require.NoError(t, err)
+	assert.Empty(t, metas, "no messages may be delivered when preflight fails")
+}
+
+// TestPreflightAccounts_BadSourceCred verifies that a wrong source password
+// fails the preflight.
+func TestPreflightAccounts_BadSourceCred(t *testing.T) {
+	withInsecureDialers(t)
+
+	aliceSrcAddr, _ := newTestServer(t)
+	destAddr, _, _ := newSharedDestServer(t)
+
+	appCfg := &AppConfig{
+		Dest: DestHostConfig{Host: destAddr},
+		Accounts: []AccountConfig{
+			{
+				Name:       "alice",
+				SourceHost: aliceSrcAddr,
+				SourceUser: testUser,
+				SourcePass: "wrong-source-pass",
+				DestUser:   "alice-backup",
+				DestPass:   "alicebackuppass",
+			},
+		},
+	}
+
+	err := preflightAccounts(context.Background(), appCfg)
+	require.Error(t, err, "bad source credential must fail the preflight")
+	assert.Contains(t, err.Error(), "alice")
+}
+
+// TestPreflightAccounts_CancelledCtx verifies that a pre-cancelled context
+// aborts the preflight before any connection is attempted.
+func TestPreflightAccounts_CancelledCtx(t *testing.T) {
+	withInsecureDialers(t)
+
+	appCfg := &AppConfig{
+		Dest: DestHostConfig{Host: "127.0.0.1:1"},
+		Accounts: []AccountConfig{
+			{
+				Name:       "alice",
+				SourceHost: "127.0.0.1:1",
+				SourceUser: testUser,
+				SourcePass: testPass,
+				DestUser:   "alice-backup",
+				DestPass:   "alicebackuppass",
+			},
+		},
+	}
+
+	// Fail the test if either dialer is invoked at all.
+	origDest := dialDestFn
+	dialDestFn = func(host, user, pass string, skipTLS bool) (*DestClient, error) {
+		t.Fatal("dialDestFn must not be called when context is cancelled")
+		return nil, nil
+	}
+	t.Cleanup(func() { dialDestFn = origDest })
+
+	origSrc := dialSourceFn
+	dialSourceFn = func(host, user, pass string) (*SourceClient, error) {
+		t.Fatal("dialSourceFn must not be called when context is cancelled")
+		return nil, nil
+	}
+	t.Cleanup(func() { dialSourceFn = origSrc })
+
+	ctx, cancel := context.WithCancel(context.Background())
+	cancel()
+
+	require.ErrorIs(t, preflightAccounts(ctx, appCfg), context.Canceled)
+}

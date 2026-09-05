@@ -62,20 +62,21 @@ func main() {
 	}()
 	defer cancel()
 
+	// Credential preflight: verify source and destination logins for every
+	// account before pulling any data. A bad credential in any account
+	// aborts the whole run so no account is partially processed.
+	if err := preflightAccounts(ctx, appCfg); err != nil {
+		log.Printf("ERROR: credential check failed: %v — no accounts will be synchronised", err)
+		os.Exit(1)
+	}
+
 	var totalNew, totalSkipped int
 	for i := range appCfg.Accounts {
 		if ctx.Err() != nil {
 			break
 		}
 		acc := &appCfg.Accounts[i]
-		cfg := &Config{
-			DestHost:    appCfg.Dest.Host,
-			DestUser:    acc.DestUser,
-			DestPass:    acc.DestPass,
-			DestSkipTLS: appCfg.Dest.SkipTLS,
-			StateFile:   acc.StateFile,
-			DryRun:      appCfg.DryRun,
-		}
+		cfg := configForAccount(appCfg, acc)
 
 		newCount, skippedCount, err := runAccount(ctx, cfg, acc)
 		if err != nil {
@@ -88,6 +89,47 @@ func main() {
 
 	log.Printf("done — %d synchronised, %d skipped (already synced) across %d account(s)",
 		totalNew, totalSkipped, len(appCfg.Accounts))
+}
+
+// configForAccount builds the per-account Config used by runAccount from the
+// shared AppConfig and one account's settings.
+func configForAccount(appCfg *AppConfig, acc *AccountConfig) *Config {
+	return &Config{
+		DestHost:    appCfg.Dest.Host,
+		DestUser:    acc.DestUser,
+		DestPass:    acc.DestPass,
+		DestSkipTLS: appCfg.Dest.SkipTLS,
+		StateFile:   acc.StateFile,
+		DryRun:      appCfg.DryRun,
+	}
+}
+
+// preflightAccounts verifies, for every account, that the source login and
+// the paired destination login succeed — before any folder/headers/messages
+// are pulled. It fails fast on the first account whose credentials do not
+// work, so a bad credential in one account prevents the entire run.
+func preflightAccounts(ctx context.Context, appCfg *AppConfig) error {
+	for i := range appCfg.Accounts {
+		if ctx.Err() != nil {
+			return ctx.Err()
+		}
+		acc := &appCfg.Accounts[i]
+		cfg := configForAccount(appCfg, acc)
+
+		log.Printf("[%s] preflight: checking source credentials...", acc.Name)
+		src, err := dialSourceFn(acc.SourceHost, acc.SourceUser, acc.SourcePass)
+		if err != nil {
+			return fmt.Errorf("account %q source: %w", acc.Name, err)
+		}
+		_ = src.Close()
+
+		log.Printf("[%s] preflight: checking destination credentials...", acc.Name)
+		if err := testDestConnection(cfg); err != nil {
+			return fmt.Errorf("account %q destination: %w", acc.Name, err)
+		}
+		log.Printf("[%s] preflight: credentials OK", acc.Name)
+	}
+	return nil
 }
 
 // runAccount syncs every folder of one source account to its paired
@@ -115,14 +157,6 @@ func runAccount(ctx context.Context, cfg *Config, acc *AccountConfig) (totalNew,
 		return 0, 0, fmt.Errorf("list folders: %w", err)
 	}
 	log.Printf("[%s] found %d folder(s) on source", acc.Name, len(folders))
-
-	if cfg.DryRun {
-		log.Printf("[%s] dry-run: testing connection to destination...", acc.Name)
-		if err := testDestConnection(cfg); err != nil {
-			return 0, 0, fmt.Errorf("dest: %w", err)
-		}
-		log.Printf("[%s] dry-run: destination connection OK", acc.Name)
-	}
 
 	srcDelim := src.Delimiter()
 	var destDelim rune // fetched once, on the first per-account dest connection
